@@ -1,0 +1,131 @@
+Install Unbound en raspbian.
+
+sudo apt-get update && sudo apt-get upgrade -y
+sudo apt-get update
+sudo apt-get install -y unbound dnsutils
+systemctl enable unbound
+
+
+### Abirmos el dns a quien quiera dnsear...
+
+vim /etc/unbound/unbound.conf.d/unbound_srv.conf
+
+server:
+    verbosity: 1
+    port: 53
+    do-ip4: yes
+    do-udp: yes
+    do-tcp: yes
+    rrset-roundrobin: yes
+    # May be set to yes if you have IPv6 connectivity
+    do-ip6: no
+    # Use this only when you downloaded the list of primary root servers!
+    # root-hints: "/var/lib/unbound/root.hints"
+    # Trust glue only if it is within the servers authority
+    harden-glue: yes
+    # Require DNSSEC data for trust-anchored zones, if such data is absent, the zone becomes BOGUS
+    harden-dnssec-stripped: yes
+    # Don't use Capitalization randomization as it known to cause DNSSEC issues sometimes
+    # see https://discourse.pi-hole.net/t/unbound-stubby-or-dnscrypt-proxy/9378 for further details
+    use-caps-for-id: no
+    # Reduce EDNS reassembly buffer size.
+    # Suggested by the unbound man page to reduce fragmentation reassembly problems
+    edns-buffer-size: 1472
+    # TTL bounds for cache
+    cache-min-ttl: 3600
+    cache-max-ttl: 86400
+    # Perform prefetching of close to expired message cache entries
+    # This only applies to domains that have been frequently queried
+    prefetch: yes
+    # One thread should be sufficient, can be increased on beefy machines
+    num-threads: 1
+    # Ensure kernel buffer is large enough to not loose messages in traffic spikes
+    so-rcvbuf: 1m
+    # Ensure privacy of local IP ranges
+    private-address: 192.168.0.0/16
+    private-address: 172.16.0.0/12
+    private-address: 10.0.0.0/8
+    interface: 0.0.0.0
+    access-control: 0.0.0.0/0 allow
+
+forward-zone:
+    name: "."
+    forward-addr: 1.1.1.1@853#cloudflare-dns.com
+    forward-addr: 1.0.0.1@853#cloudflare-dns.com
+
+
+
+systemctl restart unbound
+
+systemctl status -l unbound
+
+si todo esta en verde, probamos
+
+netstat -nltp --> estamos en el puerto 53
+dig daf.com.ar --> Muestra info de dominio
+
+; <<>> DiG 9.9.5-9+deb8u17-Raspbian <<>> daf.com.ar
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 64195
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1472
+;; QUESTION SECTION:
+;daf.com.ar.                    IN      A
+
+;; ANSWER SECTION:
+daf.com.ar.             14400   IN      A       212.1.211.21
+
+;; Query time: 1673 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1)
+;; WHEN: Wed Jun 05 11:44:27 -03 2019
+;; MSG SIZE  rcvd: 55
+
+host -a -v google.com ---> muestra data del dns:
+
+Trying "google.com"
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 27310
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;google.com.                    IN      ANY
+
+;; ANSWER SECTION:
+google.com.             3260    IN      A       172.217.22.46
+google.com.             3260    IN      AAAA    2a00:1450:4001:81b::200e
+
+
+Ahora, en un cliente cualquiera, conectamos al dns de la raspi y tataaaaan!!!
+
+
+C:\>nslookup
+Default Server:  sv-ddddd.cdsx.ar
+Address:  192.168.150.7
+
+> server 192.168.151.85
+Default Server:  [192.168.151.85]
+Address:  192.168.151.85
+
+> google.com
+Server:  [192.168.151.85]
+Address:  192.168.151.85
+
+Non-authoritative answer:
+Name:    google.com
+Addresses:  2a00:1450:4001:81b::200e
+          172.217.22.46
+
+> daf.com.ar
+Server:  [192.168.151.85]
+Address:  192.168.151.85
+
+DNS request timed out.
+    timeout was 2 seconds.
+Non-authoritative answer:
+DNS request timed out.
+    timeout was 2 seconds.
+Name:    daf.com.ar
+Address:  212.1.211.21
+
